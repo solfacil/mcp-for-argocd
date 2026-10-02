@@ -332,7 +332,10 @@ export class ArgoCDClient {
         version: resourceRef.version
       }
     );
-    return body.manifest;
+    // `manifest` is the live resource as a raw JSON string (same shape as
+    // targetState/liveState in getApplicationManagedResources) — carries the
+    // same managedFields/last-applied-configuration bulk, unstripped.
+    return body.manifest ? stripManagedFields(JSON.parse(body.manifest)) : body.manifest;
   }
 
   public async getResourceEvents(
