@@ -36,8 +36,16 @@ EXPOSE 3000
 # `-e MCP_BIND_ADDRESS=0.0.0.0` alongside an inbound credential. See "Network
 # Exposure" in the README.
 #
-# Split so that overriding the command only replaces the arguments, not the
-# interpreter: `docker run <image> http --stateless` works as written.
-ENTRYPOINT [ "node", "dist/index.js" ]
-CMD [ "http" ]
+# PORT has no env-var binding in cmd.ts (only a --port CLI flag, default
+# 3000) and the listener defaults to loopback — so without this shim the
+# container never answers on the Kubernetes-injected PORT/pod IP and every
+# readiness/liveness probe against it fails, crash-looping the pod. This
+# wraps the binary in a shell so ${PORT}/${MCP_BIND_ADDRESS} expand into
+# CLI flags at container start. --allow-unauthenticated is safe here only
+# because every deployment of this image sits behind an external BasicAuth
+# layer (Traefik Middleware) — see the chart's mcp-argocd values.yaml.
+# `docker run <image> http --stateless` still works: CMD's args land after
+# --allow-unauthenticated via "$@".
+ENTRYPOINT [ "sh", "-c", "exec node dist/index.js http --port \"${PORT:-3000}\" --bind-address \"${MCP_BIND_ADDRESS:-0.0.0.0}\" --allow-unauthenticated \"$@\"", "--" ]
+CMD []
 USER 1000
