@@ -50,14 +50,22 @@ export class ArgoCDClient {
   }
 
   public async listApplications(params?: { search?: string; limit?: number; offset?: number }) {
-    const { body } = await this.client.get<V1alpha1ApplicationList>(
-      `/api/v1/applications`,
-      params?.search ? { search: params.search } : undefined
-    );
+    // ArgoCD's /api/v1/applications has no substring-search query param (only
+    // exact `name`, `project`, `repo`, `appNamespace`, `selector`) — sending
+    // `search` as a query param is silently ignored by the server, which
+    // returns every application unfiltered. The partial-match behavior this
+    // method documents has to be done client-side instead.
+    const { body } = await this.client.get<V1alpha1ApplicationList>(`/api/v1/applications`);
+
+    const rawItems = params?.search
+      ? (body.items ?? []).filter((app) =>
+          app.metadata?.name?.toLowerCase().includes(params.search!.toLowerCase())
+        )
+      : (body.items ?? []);
 
     // Strip heavy fields to reduce token usage
     const strippedItems =
-      body.items?.map((app) => ({
+      rawItems.map((app) => ({
         metadata: {
           name: app.metadata?.name,
           namespace: app.metadata?.namespace,
@@ -76,9 +84,13 @@ export class ArgoCDClient {
         }
       })) ?? [];
 
-    // Apply pagination
+    // Apply pagination. Defaults to 50 when the caller doesn't pass limit —
+    // this instance manages 600+ applications across every repo/org, so an
+    // unbounded call here is as large as get_application used to be before
+    // managedFields was stripped.
     const start = params?.offset ?? 0;
-    const end = params?.limit ? start + params.limit : strippedItems.length;
+    const limit = params?.limit ?? 50;
+    const end = start + limit;
     const items = strippedItems.slice(start, end);
 
     return {

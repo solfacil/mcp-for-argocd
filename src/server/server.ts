@@ -82,7 +82,7 @@ export class Server extends McpServer {
           .positive()
           .optional()
           .describe(
-            'Maximum number of applications to return. Use this to reduce token usage when there are many applications. Optional.'
+            'Maximum number of applications to return. Defaults to 50. Use this to reduce token usage when there are many applications. Optional.'
           ),
         offset: z
           .number()
