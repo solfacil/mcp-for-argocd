@@ -273,7 +273,8 @@ export class ArgoCDClient {
     applicationName: string,
     applicationNamespace: string,
     resourceRef: V1alpha1ResourceResult,
-    container: string
+    container: string,
+    tailLines?: number
   ) {
     const logs: ApplicationLogEntry[] = [];
     await this.client.getStream<ApplicationLogEntry>(
@@ -286,7 +287,10 @@ export class ArgoCDClient {
         kind: resourceRef.kind,
         version: resourceRef.version,
         follow: false,
-        tailLines: 100,
+        // Verbose structured-log apps can push a single 100-line default well
+        // past token limits (observed: ~140KB/100 lines for one app). Still
+        // defaults to 100 for callers that don't care, but now overridable.
+        tailLines: tailLines ?? 100,
         container: container
       },
       (chunk) => logs.push(chunk)

@@ -187,14 +187,26 @@ export class Server extends McpServer {
         applicationName: z.string(),
         applicationNamespace: ApplicationNamespaceSchema,
         resourceRef: ResourceRefSchema,
-        container: z.string()
+        container: z.string(),
+        tailLines: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe(
+            'Number of lines to return from the end of the log. Defaults to 100. Lower this for apps with verbose structured logs — 100 lines can be well over 100KB.'
+          )
       },
-      async ({ applicationName, applicationNamespace, resourceRef, container }, client) =>
+      async (
+        { applicationName, applicationNamespace, resourceRef, container, tailLines },
+        client
+      ) =>
         await client.getWorkloadLogs(
           applicationName,
           applicationNamespace,
           resourceRef as V1alpha1ResourceResult,
-          container
+          container,
+          tailLines
         )
     );
     this.addJsonOutputTool(
