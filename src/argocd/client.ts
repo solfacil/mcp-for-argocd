@@ -89,7 +89,7 @@ export class ArgoCDClient {
     // unbounded call here is as large as get_application used to be before
     // managedFields was stripped.
     const start = params?.offset ?? 0;
-    const limit = params?.limit ?? 50;
+    const limit = params?.limit ?? 25;
     const end = start + limit;
     const items = strippedItems.slice(start, end);
 
