@@ -13,6 +13,31 @@ import {
 } from '../types/argocd-types.js';
 import { HttpClient } from './http.js';
 
+// Strips the fields that dominate response size without carrying diagnostic
+// value for an LLM: metadata.managedFields (per-manager field-ownership
+// bookkeeping — one block per apply/update, can be tens of KB on its own)
+// and the kubectl last-applied-configuration annotation (duplicates the
+// whole spec as an escaped JSON string). Mutates nothing; returns a new
+// object with the same shape minus those fields. Safe to call on any
+// Kubernetes-shaped object (Application, or a resource manifest inside
+// targetState/liveState).
+export function stripManagedFields<T extends { metadata?: unknown }>(obj: T): T {
+  const metadata = obj.metadata as Record<string, unknown> | undefined;
+  if (!metadata) return obj;
+
+  const newMetadata: Record<string, unknown> = { ...metadata };
+  delete newMetadata.managedFields;
+
+  const annotations = newMetadata.annotations as Record<string, unknown> | undefined;
+  if (annotations && 'kubectl.kubernetes.io/last-applied-configuration' in annotations) {
+    const newAnnotations = { ...annotations };
+    delete newAnnotations['kubectl.kubernetes.io/last-applied-configuration'];
+    newMetadata.annotations = Object.keys(newAnnotations).length > 0 ? newAnnotations : undefined;
+  }
+
+  return { ...obj, metadata: newMetadata };
+}
+
 export class ArgoCDClient {
   private baseUrl: string;
   private apiToken: string;
@@ -86,7 +111,7 @@ export class ArgoCDClient {
       `/api/v1/applications/${applicationName}`,
       queryParams
     );
-    return body;
+    return stripManagedFields(body);
   }
 
   public async getAppProject(projectName: string) {
@@ -200,7 +225,23 @@ export class ArgoCDClient {
       `/api/v1/applications/${applicationName}/managed-resources`,
       filters
     );
-    return body;
+
+    // Each item nests up to 4 full K8s manifests (targetState, liveState,
+    // normalizedLiveState, predictedLiveState) — managedFields on each one
+    // was the dominant cost here, not the resource count.
+    const items = (body.items ?? []).map((item) => ({
+      ...item,
+      targetState: item.targetState ? stripManagedFields(JSON.parse(item.targetState)) : undefined,
+      liveState: item.liveState ? stripManagedFields(JSON.parse(item.liveState)) : undefined,
+      normalizedLiveState: item.normalizedLiveState
+        ? stripManagedFields(JSON.parse(item.normalizedLiveState))
+        : undefined,
+      predictedLiveState: item.predictedLiveState
+        ? stripManagedFields(JSON.parse(item.predictedLiveState))
+        : undefined
+    }));
+
+    return { ...body, items };
   }
 
   public async getApplicationLogs(applicationName: string) {
